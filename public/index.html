@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dominó — Multiplayer</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- Tela de entrada -->
+  <section id="lobby" class="screen active">
+    <div class="card">
+      <h1>Dominó</h1>
+      <p class="sub">2 a 4 jogadores na mesma rede</p>
+
+      <label for="name">Seu nome</label>
+      <input id="name" maxlength="20" placeholder="Ex.: zequinha do buteco" autocomplete="off">
+
+      <div class="row">
+        <button id="btn-create" class="primary">Criar sala</button>
+        <button id="btn-join">Entrar em sala</button>
+      </div>
+
+      <div id="join-box" class="hidden">
+        <label for="code">Código da sala</label>
+        <input id="code" maxlength="6" placeholder="Ex.: K3P7" autocomplete="off" style="text-transform:uppercase">
+        <button id="btn-join-confirm" class="primary">Entrar</button>
+      </div>
+
+      <p id="lobby-error" class="error"></p>
+      <p class="hint">Quem cria a sala vira o anfitrião e pode iniciar a partida quando houver ao menos 2 jogadores.</p>
+    </div>
+  </section>
+
+  <!-- Tela da sala / partida -->
+  <section id="table-screen" class="screen">
+    <header class="topbar">
+      <div class="brand">Dominó</div>
+      <div class="room-code">Sala <strong id="room-code">----</strong></div>
+      <div class="turn-info" id="turn-info"></div>
+      <button id="btn-leave" class="ghost small">Sair</button>
+    </header>
+
+    <main class="table">
+      <aside class="players" id="players"></aside>
+
+      <div class="center">
+        <div class="board" id="board">
+          <div class="board-track" id="board-track">
+            <div class="board-empty" id="board-empty">Mesa vazia — jogue qualquer peça</div>
+          </div>
+        </div>
+        <div class="ends" id="ends"></div>
+      </div>
+
+      <aside class="side">
+        <div class="panel">
+          <div class="panel-title">Monte</div>
+          <div class="stock" id="stock">0 peças</div>
+        </div>
+        <div class="panel grow">
+          <div class="panel-title">Histórico</div>
+          <ul class="log" id="log"></ul>
+        </div>
+        <div class="panel">
+          <div class="panel-title">Chat</div>
+          <ul class="chat" id="chat"></ul>
+          <form id="chat-form" class="chat-form">
+            <input id="chat-input" maxlength="200" placeholder="Mensagem" autocomplete="off">
+            <button type="submit" class="small">Enviar</button>
+          </form>
+        </div>
+      </aside>
+    </main>
+
+    <footer class="bottom">
+      <div class="hand" id="hand"></div>
+      <div class="actions" id="actions"></div>
+    </footer>
+
+    <!-- Monte: aparece no canto inferior direito quando você precisa comprar -->
+    <aside id="stock-panel" class="stock-panel hidden" aria-label="Monte de peças">
+      <div class="stock-panel-head">
+        <span>Monte</span>
+        <span class="stock-count" id="stock-panel-count">0</span>
+      </div>
+      <p class="stock-panel-hint">Sem jogada. Clique em uma peça para comprar.</p>
+      <div class="stock-grid" id="stock-grid"></div>
+    </aside>
+  </section>
+
+  <!-- Overlay de fim de partida -->
+  <div id="overlay" class="overlay hidden">
+    <div class="card">
+      <h2 id="overlay-title">Fim de partida</h2>
+      <p id="overlay-text"></p>
+      <button id="btn-restart" class="primary hidden">Nova partida</button>
+      <button id="btn-close-overlay" class="ghost">Fechar</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
