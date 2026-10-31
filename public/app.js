@@ -34,7 +34,10 @@ const ui = {
   overlayText: $('#overlay-text'),
   btnRestart: $('#btn-restart'),
   btnSound: $('#btn-sound'),
-  btnToggleSide: $('#btn-toggle-side'),
+  btnPanels: $('#btn-panels'),
+  panelsMenu: $('#panels-menu'),
+  btnOnlyBoard: $('#btn-only-board'),
+  btnAllPanels: $('#btn-all-panels'),
   btnFlip: $('#btn-flip'),
   btnHide: $('#btn-hide'),
   handHint: $('#hand-hint'),
@@ -800,11 +803,76 @@ ui.btnSound.addEventListener('click', () => {
 });
 refreshSoundBtn();
 
-// Mostrar/ocultar painéis laterais (jogar no canto da tela)
-ui.btnToggleSide.addEventListener('click', () => {
-  ui.table.classList.toggle('no-side');
-  requestAnimationFrame(relayoutBoard); // a mesa ganhou/perdeu espaço
+// Visibilidade individual dos painéis (persistida por navegador). Permite deixar
+// só o tabuleiro + chat, por exemplo.
+const SIDE_PANELS = ['panel-stock', 'panel-score', 'panel-log', 'panel-chat'];
+
+function isPanelHidden(id) {
+  try { return localStorage.getItem('domino.hide.' + id) === '1'; } catch { return false; }
+}
+function setPanelHidden(id, hidden) {
+  try { localStorage.setItem('domino.hide.' + id, hidden ? '1' : '0'); } catch { /* ignore */ }
+}
+
+function applyPanels() {
+  let anyVisible = false;
+  for (const id of SIDE_PANELS) {
+    const panel = document.getElementById(id);
+    if (!panel) continue;
+    const hidden = isPanelHidden(id);
+    panel.classList.toggle('panel-hidden', hidden);
+    if (!hidden) anyVisible = true;
+    // Sincroniza o checkbox do menu (marcado = visível).
+    const cb = ui.panelsMenu.querySelector(`input[data-panel="${id}"]`);
+    if (cb) cb.checked = !hidden;
+  }
+  // Nenhum painel visível: some com a coluna e a mesa ocupa tudo.
+  ui.table.classList.toggle('no-side', !anyVisible);
+  requestAnimationFrame(relayoutBoard);
+}
+
+function hidePanel(id) { setPanelHidden(id, true); applyPanels(); }
+
+ui.panelsMenu.querySelectorAll('input[data-panel]').forEach((cb) => {
+  cb.addEventListener('change', () => { setPanelHidden(cb.dataset.panel, !cb.checked); applyPanels(); });
 });
+document.querySelectorAll('.panel-close').forEach((btn) => {
+  btn.addEventListener('click', () => hidePanel(btn.dataset.target));
+});
+
+// Atalho: só o tabuleiro + chat.
+ui.btnOnlyBoard.addEventListener('click', () => {
+  setPanelHidden('panel-stock', true);
+  setPanelHidden('panel-score', true);
+  setPanelHidden('panel-log', true);
+  setPanelHidden('panel-chat', false);
+  applyPanels();
+  closePanelsMenu();
+});
+// Mostrar todos de novo.
+ui.btnAllPanels.addEventListener('click', () => {
+  for (const id of SIDE_PANELS) setPanelHidden(id, false);
+  applyPanels();
+  closePanelsMenu();
+});
+
+// Abre/fecha o menu de painéis.
+function closePanelsMenu() {
+  ui.panelsMenu.classList.add('hidden');
+  ui.btnPanels.setAttribute('aria-expanded', 'false');
+}
+ui.btnPanels.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const willOpen = ui.panelsMenu.classList.contains('hidden');
+  ui.panelsMenu.classList.toggle('hidden', !willOpen);
+  ui.btnPanels.setAttribute('aria-expanded', String(willOpen));
+});
+// Clique fora fecha o menu.
+document.addEventListener('click', (e) => {
+  if (!ui.panelsMenu.classList.contains('hidden') && !e.target.closest('.menu-wrap')) closePanelsMenu();
+});
+
+applyPanels();
 
 // Virar as peças (verso)
 function refreshFlipBtn() {

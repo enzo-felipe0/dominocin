@@ -41,7 +41,18 @@
       <div class="turn-info" id="turn-info"></div>
       <div class="topbar-tools">
         <button id="btn-sound" class="ghost small" title="Ligar/desligar sons" aria-pressed="true">🔊</button>
-        <button id="btn-toggle-side" class="ghost small" title="Mostrar/ocultar painéis">☰ Painéis</button>
+        <div class="menu-wrap">
+          <button id="btn-panels" class="ghost small" title="Mostrar/ocultar painéis" aria-haspopup="true" aria-expanded="false">☰ Painéis ▾</button>
+          <div id="panels-menu" class="menu hidden" role="menu">
+            <label><input type="checkbox" data-panel="panel-stock"> Monte</label>
+            <label><input type="checkbox" data-panel="panel-score"> Placar de vitórias</label>
+            <label><input type="checkbox" data-panel="panel-log"> Histórico</label>
+            <label><input type="checkbox" data-panel="panel-chat"> Chat</label>
+            <hr>
+            <button id="btn-only-board" class="small">🎯 Só tabuleiro + chat</button>
+            <button id="btn-all-panels" class="small">Mostrar tudo</button>
+          </div>
+        </div>
         <button id="btn-leave" class="ghost small">Sair</button>
       </div>
     </header>
@@ -59,14 +70,18 @@
       </div>
 
       <aside class="side" id="side">
-        <div class="panel">
-          <div class="panel-title">Monte</div>
+        <div class="panel" id="panel-stock">
+          <div class="panel-head">
+            <span class="panel-title">Monte</span>
+            <button class="panel-close" data-target="panel-stock" title="Ocultar">✕</button>
+          </div>
           <div class="stock" id="stock">0 peças</div>
         </div>
 
         <div class="panel" id="panel-score">
           <div class="panel-head">
             <span class="panel-title">Placar de vitórias</span>
+            <button class="panel-close" data-target="panel-score" title="Ocultar">✕</button>
           </div>
           <ul class="scoreboard" id="scoreboard"></ul>
         </div>
@@ -75,6 +90,7 @@
           <div class="panel-head">
             <span class="panel-title">Histórico</span>
             <button class="panel-min" data-target="panel-log" title="Minimizar">–</button>
+            <button class="panel-close" data-target="panel-log" title="Ocultar">✕</button>
           </div>
           <ul class="log" id="log"></ul>
         </div>
@@ -83,6 +99,7 @@
           <div class="panel-head">
             <span class="panel-title">Chat</span>
             <button class="panel-min" data-target="panel-chat" title="Minimizar">–</button>
+            <button class="panel-close" data-target="panel-chat" title="Ocultar">✕</button>
           </div>
           <ul class="chat" id="chat"></ul>
           <form id="chat-form" class="chat-form">
@@ -105,13 +122,13 @@
       <div class="actions" id="actions"></div>
     </footer>
 
-    <!-- Monte: aparece no canto inferior direito quando você precisa comprar -->
+    <!-- Monte de compra: bandeja central logo acima da sua mão quando precisa comprar -->
     <aside id="stock-panel" class="stock-panel hidden" aria-label="Monte de peças">
       <div class="stock-panel-head">
-        <span>Monte</span>
+        <span>🂠 Compre no monte</span>
         <span class="stock-count" id="stock-panel-count">0</span>
       </div>
-      <p class="stock-panel-hint">Sem jogada. Clique em uma peça para comprar.</p>
+      <p class="stock-panel-hint">Sem jogada — clique em uma peça para comprar.</p>
       <div class="stock-grid" id="stock-grid"></div>
     </aside>
   </section>

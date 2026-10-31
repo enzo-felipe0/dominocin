@@ -79,8 +79,13 @@ vencedor no jogo fechado. A sala mantém um **placar de vitórias** acumulado
 
 - **🔊 Som:** liga/desliga os sinais sonoros (sua vez, jogada, compra, geral,
   vitória). A preferência fica salva no navegador.
-- **☰ Painéis:** esconde/mostra os painéis laterais (placar, histórico, chat) para
-  jogar usando só o canto da tela. Histórico e chat também têm botão de minimizar.
+- **☰ Painéis:** menu para mostrar/ocultar cada painel individualmente (Monte,
+  Placar, Histórico, Chat). Tem o atalho **"🎯 Só tabuleiro + chat"**, que deixa só a
+  mesa e o chat para máxima visibilidade, e **"Mostrar tudo"** para restaurar. Cada
+  painel também tem um **✕** para ocultar na hora; histórico e chat têm minimizar.
+- **Monte de compra:** quando você não tem jogada, uma bandeja **"Compre no monte"**
+  aparece centralizada logo acima da sua mão (com seta apontando para ela), bem no
+  foco da ação — é só clicar na peça que quer puxar.
 - **Mesa que cabe na tela:** a corrente de peças **dobra** como numa mesa de verdade
   (cada fileira vira para o lado contrário) e o tamanho das peças é ajustado
   automaticamente para o jogo inteiro caber **sem rolagem**, mesmo com a janela em
