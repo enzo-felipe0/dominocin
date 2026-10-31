@@ -81,6 +81,10 @@ vencedor no jogo fechado. A sala mantém um **placar de vitórias** acumulado
   vitória). A preferência fica salva no navegador.
 - **☰ Painéis:** esconde/mostra os painéis laterais (placar, histórico, chat) para
   jogar usando só o canto da tela. Histórico e chat também têm botão de minimizar.
+- **Mesa que cabe na tela:** a corrente de peças **dobra** como numa mesa de verdade
+  (cada fileira vira para o lado contrário) e o tamanho das peças é ajustado
+  automaticamente para o jogo inteiro caber **sem rolagem**, mesmo com a janela em
+  tela dividida (meia tela) ou no celular.
 - **🂠 Virar:** vira as peças da sua mão ao contrário (mostra o verso), para
   ninguém ao seu lado ver os números. **👁 Ocultar** recolhe a mão por completo.
 - **Reordenar:** arraste as peças da mão para organizá-las na ordem que preferir.

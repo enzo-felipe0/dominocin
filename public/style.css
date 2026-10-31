@@ -21,10 +21,13 @@
 html, body {
   margin: 0;
   height: 100%;
+  overflow: hidden;            /* o jogo cabe na tela; nada de rolagem da página */
   background: radial-gradient(1200px 600px at 50% -10%, #1c4436 0%, var(--bg) 60%);
   color: var(--ink);
   font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
+/* Usa a altura real da viewport (importante em celular e em janela dividida). */
+.screen.active { height: 100vh; height: 100dvh; }
 
 button {
   font: inherit;
@@ -132,32 +135,54 @@ label { display: block; font-size: 12px; letter-spacing: .04em; text-transform: 
   flex: 1;
   display: flex;
   align-items: center;
-  padding: 16px;
+  justify-content: center;
+  padding: 12px;
   border-radius: 18px;
   background:
     radial-gradient(circle at 50% 30%, var(--felt) 0%, var(--felt-2) 100%);
   border: 1px solid var(--line);
   box-shadow: inset 0 0 60px rgba(0, 0, 0, .35);
-  overflow-x: auto;
-  overflow-y: hidden;
-  scroll-behavior: smooth;
+  overflow: hidden;            /* a corrente dobra para caber; sem rolagem */
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, .25) transparent;
+  min-height: 0;
 }
-.board::-webkit-scrollbar { height: 8px; }
+.board::-webkit-scrollbar { width: 8px; }
 .board::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .22); border-radius: 4px; }
 .board::-webkit-scrollbar-track { background: transparent; }
 
-/* A corrente fica sempre numa linha só; quando passa da largura, rola na horizontal.
-   O margin auto centraliza enquanto cabe e não corta o início quando transborda. */
+/* A corrente "dobra" como numa mesa de verdade: cada fileira segue num sentido e
+   a seguinte volta (boustrophedon). O tamanho da peça é calculado em JS (--bw)
+   para a cobra inteira caber na caixa sem rolagem. */
 .board-track {
   display: flex;
   align-items: center;
+  justify-content: center;
   flex: none;
-  gap: 0;
   margin: auto;
 }
-.board-empty { color: rgba(255, 255, 255, .45); font-size: 14px; padding: 0 8px; }
+.board-track.snake {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  gap: 2px;
+}
+.board-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: calc(var(--bw, 38px) * 2);
+}
+/* As fileiras intermediárias encostam nas duas pontas (a dobra alinha em cima
+   e embaixo); a última fileira fica compacta, grudada na ponta onde conecta. */
+.board-row.spread { justify-content: space-between; }
+.board-row.align-left { justify-content: flex-start; }
+.board-row.align-right { justify-content: flex-end; }
+.board-empty { color: rgba(255, 255, 255, .45); font-size: 14px; padding: 0 8px; text-align: center; }
 
 .ends { display: flex; justify-content: space-between; gap: 12px; padding: 8px 4px 0; }
 .end-btn {
@@ -202,7 +227,7 @@ label { display: block; font-size: 12px; letter-spacing: .04em; text-transform: 
 .tile.horizontal { flex-direction: row; width: calc(var(--w) * 2); height: var(--w); }
 .tile.horizontal .half + .half { border-top: 0; border-left: 1px solid var(--tile-edge); }
 
-.board .tile { --w: 38px; }
+.board .tile { --w: var(--bw, 38px); }
 .board .tile.playable-hint { outline: 2px solid var(--accent); }
 
 /* Mão */
@@ -385,28 +410,33 @@ label { display: block; font-size: 12px; letter-spacing: .04em; text-transform: 
 .table.no-side { grid-template-columns: 200px 1fr; }
 .table.no-side .side { display: none; }
 
+/* Janela estreita (tela dividida): aperta as colunas antes de empilhar. */
+@media (max-width: 1100px) and (min-width: 901px) {
+  .table { grid-template-columns: 170px 1fr 210px; gap: 8px; padding: 8px; }
+  .table.no-side { grid-template-columns: 170px 1fr; }
+}
+
 @media (max-width: 900px) {
   .topbar { flex-wrap: wrap; gap: 8px 12px; padding: 8px 12px; }
   .turn-info { order: 3; width: 100%; margin-left: 0; }
   .topbar-tools { margin-left: auto; }
-  .table { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; gap: 8px; padding: 8px; }
-  .table.no-side { grid-template-columns: 1fr; }
+  /* Empilhado: jogadores em cima, MESA no meio (espaço flexível), painéis embaixo. */
+  .table { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; gap: 8px; padding: 8px; }
+  .table.no-side { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
   .players { flex-direction: row; flex-wrap: wrap; }
   .player { flex: 1 1 120px; }
-  .side { flex-direction: row; flex-wrap: wrap; align-items: flex-start; }
+  .side { flex-direction: row; flex-wrap: wrap; align-items: flex-start; max-height: 32vh; overflow: auto; }
   .side .panel { flex: 1 1 160px; }
-  #panel-log { flex: 1 1 100%; max-height: 28vh; }
-  .board .tile { --w: 30px; }
+  #panel-log { flex: 1 1 100%; max-height: 22vh; }
   .bottom { flex-direction: column; align-items: stretch; gap: 10px; padding: 8px 10px 12px; }
   .actions { justify-content: center; }
   .stock-panel { right: 10px; bottom: 150px; width: 178px; max-height: 42vh; }
   .stock-grid { grid-template-columns: repeat(auto-fill, minmax(26px, 1fr)); gap: 5px; }
 }
 
-/* Telas bem estreitas (celular em pé): empilha e reduz a peça. */
+/* Telas bem estreitas (celular em pé / meia tela): empilha e reduz a mão. */
 @media (max-width: 560px) {
-  .hand .tile { --w: 38px; }
-  .board .tile { --w: 26px; }
+  .hand .tile { --w: 34px; }
   .brand { display: none; }
   .hand-hint { display: none; }
 }

@@ -385,53 +385,103 @@ function tileEl(a, b, { horizontal = false, extraClass = '' } = {}) {
 function renderBoard() {
   const g = state.game;
   const track = ui.boardTrack;
+  track.classList.remove('snake');
+  track.style.removeProperty('--bw');
   track.innerHTML = '';
   if (!g || g.board.length === 0) {
     const p = document.createElement('div');
     p.className = 'board-empty';
-    p.id = 'board-empty';
-    p.textContent = state.room.status === 'lobby'
+    p.textContent = (state.room && state.room.status === 'lobby')
       ? 'Aguardando o anfitrião iniciar a partida…'
       : 'Mesa vazia — jogue qualquer peça';
     track.appendChild(p);
-  } else {
-    for (const slot of g.board) {
-      const horizontal = slot.left !== slot.right;
-      track.appendChild(tileEl(slot.left, slot.right, { horizontal }));
-    }
-  }
-  renderEnds();
-  scrollBoardToLatest(g);
-}
-
-// Mantém a corrente numa linha só: rola na horizontal até a ponta onde a peça
-// acabou de ser jogada, para a mesa não "quebrar" em várias linhas.
-function scrollBoardToLatest(g) {
-  const board = ui.board;
-  const keyOf = (slot) => `${slot.tile[0]}-${slot.tile[1]}`;
-
-  if (!g || g.board.length === 0) {
-    state.prevLen = 0;
-    state.prevFirst = null;
-    board.scrollLeft = 0;
+    renderEnds();
     return;
   }
+  layoutSnake(g.board);
+  renderEnds();
+}
 
-  const first = keyOf(g.board[0]);
-  const isFirstRender = state.prevLen === null;
-  const grew = !isFirstRender && g.board.length > state.prevLen;
-  const grewLeft = grew && first !== state.prevFirst;
+// Quebra a lista de peças em fileiras que cabem na largura W, dado o tamanho
+// de unidade u (peça deitada = 2u de largura, carroça em pé = 1u).
+function packRows(widthUnits, u, gap, W) {
+  const rows = [];
+  let count = 0;
+  let width = 0;
+  for (const wu of widthUnits) {
+    const tw = wu * u;
+    const needed = count === 0 ? tw : width + gap + tw;
+    if (count > 0 && needed > W) {
+      rows.push(count);
+      count = 1; width = tw;
+    } else {
+      count++; width = needed;
+    }
+  }
+  if (count > 0) rows.push(count);
+  return rows;
+}
 
-  state.prevLen = g.board.length;
-  state.prevFirst = first;
+// Monta a "cobra" dobrada: escolhe o maior tamanho de peça que faz a corrente
+// inteira caber na caixa da mesa (largura e altura), sem rolagem. Fileiras
+// alternam o sentido para a corrente dobrar como numa mesa real.
+function layoutSnake(slots) {
+  const track = ui.boardTrack;
+  const box = ui.board;
+  const GAP = 2;
+  const pad = 24; // padding da .board (12px de cada lado)
+  const W = Math.max(60, box.clientWidth - pad);
+  const H = Math.max(60, box.clientHeight - pad);
 
-  // Só mexe na rolagem quando a mesa cresce (ou no primeiro desenho), para não
-  // puxar a visão de quem está olhando outra parte da mesa.
-  if (!isFirstRender && !grew) return;
+  // Caixa ainda sem dimensões (tela trocando): tenta de novo no próximo frame.
+  if (box.clientHeight < 40) {
+    requestAnimationFrame(() => { if (state.game && state.game.board.length) renderBoard(); });
+  }
 
-  const target = grewLeft ? 0 : board.scrollWidth;
-  requestAnimationFrame(() => {
-    board.scrollTo({ left: target, behavior: grew ? 'smooth' : 'auto' });
+  const widthUnits = slots.map((s) => (s.left === s.right ? 1 : 2));
+
+  let chosen = null;
+  for (let u = 56; u >= 11; u--) {
+    if (2 * u > W) continue; // a peça mais larga precisa caber na linha
+    const rows = packRows(widthUnits, u, GAP, W);
+    const totalH = rows.length * (2 * u) + Math.max(0, rows.length - 1) * GAP;
+    if (totalH <= H) { chosen = { u, rows }; break; }
+  }
+  if (!chosen) {
+    const u = 11;
+    chosen = { u, rows: packRows(widthUnits, u, GAP, W) };
+  }
+
+  track.style.setProperty('--bw', chosen.u + 'px');
+  track.classList.add('snake');
+  track.innerHTML = '';
+
+  const rows = chosen.rows;
+  let idx = 0;
+  rows.forEach((count, r) => {
+    const row = document.createElement('div');
+    row.className = 'board-row';
+    // Alinhamento: fileiras do meio encostam nas duas pontas (dobra alinhada);
+    // a última fica compacta junto da ponta por onde desce da fileira de cima.
+    if (rows.length === 1) row.classList.add('align-left');
+    else if (r === rows.length - 1) row.classList.add(r % 2 ? 'align-right' : 'align-left');
+    else row.classList.add('spread');
+
+    // Peças desta fileira, na ordem do encadeamento.
+    const slice = slots.slice(idx, idx + count);
+    idx += count;
+    const even = r % 2 === 0;
+    // Fileira par: esquerda→direita, peça como está [left|right].
+    // Fileira ímpar: a corrente volta direita→esquerda, então invertemos a ordem
+    // E espelhamos cada peça ([right|left]) para o número de encaixe ficar virado
+    // para o lado certo — o 4 encosta no 4 de verdade.
+    const visual = even ? slice : slice.slice().reverse();
+    for (const s of visual) {
+      const horizontal = s.left !== s.right;
+      const [a, b] = even ? [s.left, s.right] : [s.right, s.left];
+      row.appendChild(tileEl(a, b, { horizontal }));
+    }
+    track.appendChild(row);
   });
 }
 
@@ -753,6 +803,7 @@ refreshSoundBtn();
 // Mostrar/ocultar painéis laterais (jogar no canto da tela)
 ui.btnToggleSide.addEventListener('click', () => {
   ui.table.classList.toggle('no-side');
+  requestAnimationFrame(relayoutBoard); // a mesa ganhou/perdeu espaço
 });
 
 // Virar as peças (verso)
@@ -778,6 +829,7 @@ ui.btnHide.addEventListener('click', () => {
   state.handHidden = !state.handHidden;
   refreshHideBtn();
   renderHand();
+  requestAnimationFrame(relayoutBoard); // o rodapé mudou de altura
 });
 refreshHideBtn();
 
@@ -786,6 +838,7 @@ document.querySelectorAll('.panel-min').forEach((btn) => {
   btn.addEventListener('click', () => {
     const panel = document.getElementById(btn.dataset.target);
     if (panel) panel.classList.toggle('minimized');
+    requestAnimationFrame(relayoutBoard);
   });
 });
 
@@ -801,6 +854,17 @@ function toast(msg) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => ui.toast.classList.remove('show'), 3200);
 }
+
+// Recalcula a dobra da mesa quando a janela muda de tamanho (inclui entrar/sair
+// de tela dividida e girar o celular).
+let resizeTimer = null;
+function relayoutBoard() {
+  if (state.game && state.game.board && state.game.board.length) renderBoard();
+}
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(relayoutBoard, 80);
+});
 
 // Mantém a conexão viva em redes com proxy que derrubam ociosidade.
 setInterval(() => send({ type: 'ping' }), 25000);
