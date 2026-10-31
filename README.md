@@ -28,9 +28,9 @@ Variante brasileira do dominó, jogo duplo-seis (28 peças).
 
 ### Quem começa
 
-Começa quem tiver a **maior carroça** (peça com os dois lados iguais), da 6-6 para
-baixo. Se ninguém tiver carroça, começa quem tiver a peça de maior soma; persistindo
-o empate, o primeiro jogador da mesa.
+A **primeira partida** da sala começa com quem tem a **carroça de seis** (`6-6`).
+As **partidas seguintes** começam com quem **venceu a partida anterior**. Se a carroça de seis estiver no monte (pode acontecer com 2 ou 3 jogadores) ou a partida
+anterior terminar empatada, vale a regra antiga: começa a maior carroça; sem carroças, a peça de maior soma; persistindo o empate, o primeiro jogador da mesa.
 
 ### Como jogar
 
@@ -50,7 +50,13 @@ o empate, o primeiro jogador da mesa.
 - Compra-se **uma peça por clique**. Se a peça comprada não servir, o monte
   continua aberto e você compra outra; se servir, o monte fecha e é obrigatório
   jogá-la.
-- Se o monte acabou e você não tem jogada, você **passa a vez**.
+- **Comprar tudo de uma vez:** quando **nenhuma** peça do monte encaixa nas pontas
+  (por exemplo, quando as 7 peças de um número já têm dono), aparece o botão
+  **"Comprar todas"** para você pegar o monte inteiro em um clique — não precisa
+  comprar uma a uma só para esvaziá-lo.
+- **Passe automático:** se o monte acabou e você não tem jogada, a vez **passa
+  sozinha** — não há botão para clicar. Quando uma jogada obriga **todos os outros**
+  a passar (um *geral*), a mesa avisa "Geral!" e a vez volta para quem jogou.
 - Quem passou volta a poder jogar normalmente assim que alguém colocar uma peça
   nova na mesa.
 
@@ -65,9 +71,19 @@ o empate, o primeiro jogador da mesa.
 
 ### Contagem de pontos
 
-A soma da mão é a soma dos números das peças que sobraram. É usada apenas para
-decidir o vencedor no jogo fechado; o jogo é de partida única (sem placar
-acumulado entre rodadas).
+A soma da mão é a soma dos números das peças que sobraram. É usada para decidir o
+vencedor no jogo fechado. A sala mantém um **placar de vitórias** acumulado
+(Jogador X venceu Y vezes), exibido no painel lateral e na tela de fim de partida.
+
+### Controles da mesa
+
+- **🔊 Som:** liga/desliga os sinais sonoros (sua vez, jogada, compra, geral,
+  vitória). A preferência fica salva no navegador.
+- **☰ Painéis:** esconde/mostra os painéis laterais (placar, histórico, chat) para
+  jogar usando só o canto da tela. Histórico e chat também têm botão de minimizar.
+- **🂠 Virar:** vira as peças da sua mão ao contrário (mostra o verso), para
+  ninguém ao seu lado ver os números. **👁 Ocultar** recolhe a mão por completo.
+- **Reordenar:** arraste as peças da mão para organizá-las na ordem que preferir.
 
 ---
 
@@ -268,4 +284,5 @@ concordam com o resultado.
   perde a vaga (a partida em andamento é encerrada).
 - Sem HTTPS/WSS: use em rede local confiável. Para expor na internet, coloque um
   proxy reverso (Nginx/Caddy) com TLS na frente.
-- Máximo de 4 jogadores por mesa, uma partida por sala, sem placar acumulado.
+- Máximo de 4 jogadores por mesa. O placar de vitórias é acumulado enquanto a sala
+  existir; reiniciar o servidor (ou esvaziar a sala) zera o placar.

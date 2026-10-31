@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  fullDeck, createGame, playTile, drawTile, passTurn, legalPlacements,
+  fullDeck, createGame, playTile, drawTile, drawAllStock, passTurn, legalPlacements,
   viewFor, handHasPlayable, pipSum, tileKey, HAND_SIZE,
 } from '../src/game.js';
 
@@ -153,8 +153,7 @@ test('jogo fechado: vence quem tem a menor soma na mão', () => {
   g.turn = 0;
   g.players[0].hand = [[5, 6]]; // 11 pontos
   g.players[1].hand = [[1, 2]]; // 3 pontos
-  passTurn(g, 0);
-  passTurn(g, 1);
+  passTurn(g, 0); // 'b' também não joga e é passado automaticamente -> fecha
   assert.equal(g.status, 'finished');
   assert.equal(g.winner, 1);
   assert.equal(g.finishReason, 'blocked');
@@ -183,9 +182,45 @@ test('passar não trava a vez de quem ainda pode jogar', () => {
   passTurn(g, 0);
   assert.equal(g.turn, 1);
   playTile(g, 1, [1, 4], 'right');
-  // Depois da jogada, todos voltam a poder agir e a vez segue para o próximo.
-  assert.deepEqual(g.players.map((p) => p.passed), [false, false, false]);
-  assert.equal(g.turn, 2);
+  // Com monte vazio, quem não tem jogada é passado automaticamente até sobrar
+  // quem pode jogar — aqui só 'b' encaixa [4,4], então a vez volta para ele (geral).
+  assert.equal(g.turn, 1);
+  assert.equal(g.lastEvent.type, 'geral');
+  assert.deepEqual(g.players.map((p) => p.passed), [true, false, true]);
+});
+
+test('geral: jogada que obriga todos a passar devolve a vez a quem jogou', () => {
+  const g = createGame(['a', 'b'], seeded(43));
+  g.board = [{ tile: [3, 3], left: 3, right: 3 }];
+  g.stock = [];
+  g.turn = 0;
+  g.players[0].hand = [[3, 5], [5, 5]]; // joga [3,5] e sobra [5,5]
+  g.players[1].hand = [[0, 1]];         // nunca encaixa
+  playTile(g, 0, [3, 5], 'right');      // pontas viram 3 e 5
+  assert.equal(g.turn, 0, 'a vez volta para quem trancou');
+  assert.equal(g.lastEvent.type, 'geral');
+});
+
+test('comprar o monte inteiro só quando nada ali encaixa', () => {
+  const g = createGame(['a', 'b'], seeded(47));
+  g.board = [{ tile: [0, 0], left: 0, right: 0 }];
+  g.turn = 0;
+  g.players[0].hand = [[5, 6]];
+  g.players[1].hand = [[1, 2]];
+  // Monte com peças que não encaixam no 0: comprar tudo de uma vez.
+  g.stock = [[3, 4], [5, 5], [2, 6]];
+  const n = drawAllStock(g, 0);
+  assert.equal(n, 3);
+  assert.equal(g.stock.length, 0);
+  assert.equal(g.players[0].hand.length, 4);
+
+  // Se houver peça comprável que encaixa, não deixa comprar tudo.
+  const g2 = createGame(['a', 'b'], seeded(51));
+  g2.board = [{ tile: [0, 0], left: 0, right: 0 }];
+  g2.turn = 0;
+  g2.players[0].hand = [[5, 6]];
+  g2.stock = [[0, 4]]; // encaixa no 0
+  assert.throws(() => drawAllStock(g2, 0), /uma de cada vez/);
 });
 
 test('o estado enviado esconde a mão dos outros jogadores', () => {

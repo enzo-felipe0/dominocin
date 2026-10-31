@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { attachWebSocketServer } from './src/ws.js';
 import {
-  createGame, playTile, drawTile, passTurn, viewFor,
+  createGame, playTile, drawTile, drawAllStock, passTurn, viewFor,
   MIN_PLAYERS, MAX_PLAYERS, legalPlacements,
 } from './src/game.js';
 
@@ -49,10 +49,28 @@ function publicRoom(room) {
     players: room.players.map((p) => ({ id: p.id, name: p.name, connected: p.connected })),
     maxPlayers: MAX_PLAYERS,
     minPlayers: MIN_PLAYERS,
+    // Placar de vitórias por nome, acumulado durante a vida da sala.
+    scores: room.players.map((p) => ({ name: p.name, wins: room.scores[p.name] || 0 })),
+    lastWinner: room.lastWinnerName || null,
   };
 }
 
+// Contabiliza a vitória uma única vez quando a partida termina.
+function countResult(room) {
+  const g = room.game;
+  if (!g || g.status !== 'finished' || g.counted) return;
+  g.counted = true;
+  if (g.winner !== null) {
+    const name = room.players.find((p) => p.seat === g.winner)?.name;
+    if (name) {
+      room.scores[name] = (room.scores[name] || 0) + 1;
+      room.lastWinnerName = name;
+    }
+  }
+}
+
 function broadcast(room) {
+  countResult(room);
   for (const p of room.players) {
     if (!p.connected || !p.client) continue;
     p.client.send({ type: 'state', room: publicRoom(room), game: room.game ? viewFor(room.game, p.seat) : null });
@@ -86,7 +104,17 @@ function startGame(room) {
   // Ordena os jogadores por assento para que o índice da mão case com a ordem.
   room.players.sort((a, b) => a.seat - b.seat);
   room.players.forEach((p, i) => { p.seat = i; });
-  room.game = createGame(room.players.map((p) => p.name));
+
+  // Ordem de abertura: a 1ª partida começa com a carroça de seis; as seguintes,
+  // com quem venceu a anterior (se ainda estiver na mesa).
+  const options = {};
+  const prevWinnerSeat = room.lastWinnerName
+    ? room.players.findIndex((p) => p.name === room.lastWinnerName)
+    : -1;
+  if (prevWinnerSeat >= 0) options.starterSeat = prevWinnerSeat;
+  else options.preferDoubleSix = true;
+
+  room.game = createGame(room.players.map((p) => p.name), Math.random, options);
   broadcast(room);
 }
 
@@ -140,6 +168,17 @@ function handleMessage(player, raw) {
       const index = Number.isInteger(msg.index) ? msg.index : 0;
       try {
         drawTile(room.game, player.seat, index);
+        broadcast(room);
+      } catch (err) {
+        errorTo(player, err.message);
+      }
+      return;
+    }
+
+    case 'drawAll': {
+      if (!room.game) return errorTo(player, 'A partida ainda não começou.');
+      try {
+        drawAllStock(room.game, player.seat);
         broadcast(room);
       } catch (err) {
         errorTo(player, err.message);
@@ -218,7 +257,7 @@ function joinRoom(client, msg) {
     }
   } else {
     const code = makeRoomCode();
-    room = { code, hostId: null, players: [], game: null, createdAt: Date.now() };
+    room = { code, hostId: null, players: [], game: null, scores: {}, lastWinnerName: null, createdAt: Date.now() };
     rooms.set(code, room);
   }
 

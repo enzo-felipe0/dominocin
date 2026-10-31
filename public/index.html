@@ -39,7 +39,11 @@
       <div class="brand">Dominó</div>
       <div class="room-code">Sala <strong id="room-code">----</strong></div>
       <div class="turn-info" id="turn-info"></div>
-      <button id="btn-leave" class="ghost small">Sair</button>
+      <div class="topbar-tools">
+        <button id="btn-sound" class="ghost small" title="Ligar/desligar sons" aria-pressed="true">🔊</button>
+        <button id="btn-toggle-side" class="ghost small" title="Mostrar/ocultar painéis">☰ Painéis</button>
+        <button id="btn-leave" class="ghost small">Sair</button>
+      </div>
     </header>
 
     <main class="table">
@@ -54,17 +58,32 @@
         <div class="ends" id="ends"></div>
       </div>
 
-      <aside class="side">
+      <aside class="side" id="side">
         <div class="panel">
           <div class="panel-title">Monte</div>
           <div class="stock" id="stock">0 peças</div>
         </div>
-        <div class="panel grow">
-          <div class="panel-title">Histórico</div>
+
+        <div class="panel" id="panel-score">
+          <div class="panel-head">
+            <span class="panel-title">Placar de vitórias</span>
+          </div>
+          <ul class="scoreboard" id="scoreboard"></ul>
+        </div>
+
+        <div class="panel grow" id="panel-log">
+          <div class="panel-head">
+            <span class="panel-title">Histórico</span>
+            <button class="panel-min" data-target="panel-log" title="Minimizar">–</button>
+          </div>
           <ul class="log" id="log"></ul>
         </div>
-        <div class="panel">
-          <div class="panel-title">Chat</div>
+
+        <div class="panel" id="panel-chat">
+          <div class="panel-head">
+            <span class="panel-title">Chat</span>
+            <button class="panel-min" data-target="panel-chat" title="Minimizar">–</button>
+          </div>
           <ul class="chat" id="chat"></ul>
           <form id="chat-form" class="chat-form">
             <input id="chat-input" maxlength="200" placeholder="Mensagem" autocomplete="off">
@@ -75,7 +94,14 @@
     </main>
 
     <footer class="bottom">
-      <div class="hand" id="hand"></div>
+      <div class="hand-wrap">
+        <div class="hand-tools">
+          <button id="btn-flip" class="ghost small" title="Virar as peças (esconder os números)" aria-pressed="false">🂠 Virar</button>
+          <button id="btn-hide" class="ghost small" title="Esconder/mostrar a mão" aria-pressed="false">👁 Ocultar</button>
+          <span class="hand-hint" id="hand-hint">Arraste para reordenar</span>
+        </div>
+        <div class="hand" id="hand"></div>
+      </div>
       <div class="actions" id="actions"></div>
     </footer>
 
