@@ -32,8 +32,12 @@ export const pipSum = (t) => t[0] + t[1];
 /**
  * Cria o estado de uma partida.
  * @param {string[]} playerIds ids na ordem de assento (a ordem define quem começa)
+ * @param {() => number} rng
+ * @param {{starterSeat?: number, preferDoubleSix?: boolean}} [options]
+ *   starterSeat: força quem começa (ex.: o vencedor da partida anterior).
+ *   preferDoubleSix: na primeira partida, abre quem tem a carroça de seis.
  */
-export function createGame(playerIds, rng = Math.random) {
+export function createGame(playerIds, rng = Math.random, options = {}) {
   if (playerIds.length < MIN_PLAYERS || playerIds.length > MAX_PLAYERS) {
     throw new Error(`Número de jogadores inválido: ${playerIds.length}`);
   }
@@ -54,10 +58,30 @@ export function createGame(playerIds, rng = Math.random) {
     winner: null,       // índice do vencedor (ou null em empate)
     finishReason: null, // 'domino' | 'blocked' | 'empty-stock'
     log: [],
+    eventSeq: 0,        // contador para o cliente deduplicar efeitos (sons)
+    lastEvent: null,    // { seq, type, seat?, ... } último evento para o cliente
     startedAt: Date.now(),
   };
 
-  // Quem tem a maior carroça começa; empate de carroça -> maior peça; senão o assento 0.
+  game.turn = chooseStarter(game, options);
+  pushLog(game, `Partida iniciada com ${playerIds.length} jogadores.`);
+  return game;
+}
+
+/** Decide quem abre a partida conforme as opções e as regras da casa. */
+function chooseStarter(game, options) {
+  // Vencedor da partida anterior começa a próxima.
+  if (Number.isInteger(options.starterSeat)
+    && options.starterSeat >= 0
+    && options.starterSeat < game.players.length) {
+    return options.starterSeat;
+  }
+  // Primeira partida: abre quem tem a carroça de seis [6|6].
+  if (options.preferDoubleSix) {
+    const seat = game.players.findIndex((p) => p.hand.some((t) => t[0] === 6 && t[1] === 6));
+    if (seat >= 0) return seat;
+  }
+  // Sem referência: maior carroça; empate -> maior peça; senão assento 0.
   let starter = 0;
   let best = -1;
   game.players.forEach((p, i) => {
@@ -66,9 +90,13 @@ export function createGame(playerIds, rng = Math.random) {
       if (score > best) { best = score; starter = i; }
     }
   });
-  game.turn = starter;
-  pushLog(game, `Partida iniciada com ${playerIds.length} jogadores.`);
-  return game;
+  return starter;
+}
+
+/** Marca um evento transitório para o cliente reagir (sons, avisos). */
+function emitEvent(game, event) {
+  game.eventSeq = (game.eventSeq || 0) + 1;
+  game.lastEvent = { ...event, seq: game.eventSeq };
 }
 
 function pushLog(game, msg) {
@@ -118,6 +146,11 @@ export function handHasPlayable(game, playerIndex) {
   return game.players[playerIndex].hand.some((t) => canPlay(game, playerIndex, t));
 }
 
+/** Alguma peça do monte encaixa nas pontas atuais? (define se vale comprar tudo de uma vez) */
+export function stockHasPlayable(game) {
+  return game.stock.some((t) => legalPlacements(game, t).length > 0);
+}
+
 /**
  * Joga uma peça. Lança Error com mensagem em pt-BR quando a jogada é inválida.
  * @param {number} playerIndex
@@ -156,12 +189,44 @@ export function playTile(game, playerIndex, tile, side) {
   }
 
   pushLog(game, `${player.id} jogou [${a}|${b}] na ponta ${placement.side === 'left' ? 'esquerda' : 'direita'}.`);
+  emitEvent(game, { type: 'play', seat: playerIndex });
 
   if (player.hand.length === 0) {
     finish(game, playerIndex, 'domino');
     return;
   }
   advanceTurn(game);
+  settleForcedPasses(game);
+
+  // Geral: todos os outros foram obrigados a passar e a vez voltou para quem jogou.
+  if (game.status === 'playing' && game.turn === playerIndex
+    && game.players.every((p, i) => (i === playerIndex ? !p.passed : p.passed))
+    && game.players.length > 1) {
+    pushLog(game, `Geral! ${player.id} trancou a mesa e joga de novo.`);
+    emitEvent(game, { type: 'geral', seat: playerIndex });
+  }
+}
+
+/**
+ * Passa automaticamente por todos os jogadores que não têm jogada com o monte
+ * vazio — ninguém precisa clicar "passar" quando não há escolha. Se todos
+ * ficarem sem jogada, fecha a partida por pontos.
+ */
+function settleForcedPasses(game) {
+  let guard = 0;
+  while (game.status === 'playing'
+    && game.stock.length === 0
+    && !handHasPlayable(game, game.turn)
+    && guard++ <= game.players.length) {
+    const p = game.players[game.turn];
+    if (!p.passed) {
+      p.passed = true;
+      pushLog(game, `${p.id} passou automaticamente (sem jogada).`);
+      emitEvent(game, { type: 'pass', seat: game.turn, auto: true });
+    }
+    if (game.players.every((pl) => pl.passed)) { finishBlocked(game); return; }
+    advanceTurn(game);
+  }
 }
 
 /**
@@ -185,7 +250,34 @@ export function drawTile(game, playerIndex, index = 0) {
   player.hand.sort((x, y) => pipSum(x) - pipSum(y) || x[0] - y[0]);
   player.passed = false;
   pushLog(game, `${player.id} comprou uma peça do monte.`);
+  emitEvent(game, { type: 'draw', seat: playerIndex });
+  // Esvaziou o monte sem conseguir jogar? Resolve os passes obrigatórios.
+  if (game.stock.length === 0) settleForcedPasses(game);
   return tile;
+}
+
+/**
+ * Compra o monte inteiro de uma vez. Só é permitido quando nenhuma peça do
+ * monte encaixa nas pontas — comprar uma a uma seria perder tempo, pois o
+ * jogador acabaria pegando todas sem conseguir jogar.
+ * @returns {number} quantas peças foram compradas
+ */
+export function drawAllStock(game, playerIndex) {
+  assertPlaying(game);
+  if (playerIndex !== game.turn) throw new Error('Não é a sua vez.');
+  if (game.stock.length === 0) throw new Error('O monte está vazio.');
+  if (handHasPlayable(game, playerIndex)) throw new Error('Você tem peça jogável: é obrigatório jogar.');
+  if (stockHasPlayable(game)) throw new Error('Há peça comprável que encaixa: compre uma de cada vez.');
+  const player = game.players[playerIndex];
+  const count = game.stock.length;
+  for (const tile of game.stock.splice(0)) player.hand.push(tile);
+  player.hand.sort((x, y) => pipSum(x) - pipSum(y) || x[0] - y[0]);
+  player.passed = false;
+  pushLog(game, `${player.id} comprou todas as ${count} peças do monte.`);
+  emitEvent(game, { type: 'draw', seat: playerIndex, all: true, count });
+  // Monte vazio e ainda sem jogada: segue o passe automático.
+  settleForcedPasses(game);
+  return count;
 }
 
 /** O jogador da vez passa a vez (só permitido sem peça jogável e com monte vazio). */
@@ -197,6 +289,7 @@ export function passTurn(game, playerIndex) {
   const player = game.players[playerIndex];
   player.passed = true;
   pushLog(game, `${player.id} passou a vez.`);
+  emitEvent(game, { type: 'pass', seat: playerIndex });
 
   // Jogo fechado: todos passaram e ninguém tem jogada -> decide por pontos.
   if (game.players.every((p) => p.passed)) {
@@ -204,6 +297,7 @@ export function passTurn(game, playerIndex) {
     return;
   }
   advanceTurn(game);
+  settleForcedPasses(game);
 }
 
 function advanceTurn(game) {
@@ -228,6 +322,7 @@ function finishBlocked(game) {
     game.winner = null;
     game.finishReason = 'blocked';
     pushLog(game, `Jogo fechado com empate em ${min} pontos.`);
+    emitEvent(game, { type: 'win', seat: null, reason: 'blocked' });
   }
 }
 
@@ -237,6 +332,7 @@ function finish(game, winnerIndex, reason) {
   game.finishReason = reason;
   const name = game.players[winnerIndex].id;
   pushLog(game, reason === 'domino' ? `${name} bateu (dominó)!` : `${name} venceu por pontos (jogo fechado).`);
+  emitEvent(game, { type: 'win', seat: winnerIndex, reason });
 }
 
 function assertPlaying(game) {
@@ -270,6 +366,12 @@ export function viewFor(game, playerIndex) {
     canPlay: game.status === 'playing' && game.turn === playerIndex
       ? handHasPlayable(game, playerIndex)
       : null,
+    // Sinaliza que o jogador deve comprar o monte inteiro (nada ali encaixa).
+    mustDrawAll: game.status === 'playing' && game.turn === playerIndex
+      && game.stock.length > 0
+      && !handHasPlayable(game, playerIndex)
+      && !stockHasPlayable(game),
+    lastEvent: game.lastEvent,
     log: game.log.slice(-30),
   };
 }
