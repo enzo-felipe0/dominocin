@@ -8,14 +8,19 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Com DOMINO_URL definido, o teste roda contra um servidor já no ar (ex.: o
+// container em http://127.0.0.1:3000) em vez de subir um processo local.
+const EXTERNAL_URL = process.env.DOMINO_URL || '';
 // O cliente WebSocket global só existe a partir do Node 22.
 const SEM_WS = typeof WebSocket === 'undefined'
   ? 'Node 22+ é necessário para o cliente WebSocket usado neste teste'
   : false;
 const ROOT = path.join(__dirname, '..');
 const PORT = 3456;
+const WS_URL = EXTERNAL_URL ? EXTERNAL_URL.replace(/^http/, 'ws') : `ws://127.0.0.1:${PORT}`;
 
 function startServer() {
+  if (EXTERNAL_URL) return Promise.resolve(null);
   const child = spawn(process.execPath, ['server.js'], {
     cwd: ROOT,
     env: { ...process.env, PORT: String(PORT), HOST: '127.0.0.1' },
@@ -40,7 +45,7 @@ class Client {
     this.state = null;
     this.room = null;
     this.errors = [];
-    this.ws = new WebSocket(`ws://127.0.0.1:${PORT}`);
+    this.ws = new WebSocket(WS_URL);
     this.ready = new Promise((res, rej) => {
       this.ws.addEventListener('open', res);
       this.ws.addEventListener('error', rej);
@@ -58,6 +63,12 @@ class Client {
 }
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Sobe um servidor próprio para o teste, ou reaproveita o de DOMINO_URL.
+async function boot(t) {
+  const server = await startServer();
+  if (server) t.after(() => server.kill('SIGKILL'));
+}
 
 async function waitFor(fn, label, timeout = 5000) {
   const start = Date.now();
@@ -78,8 +89,7 @@ function legalSides(game, tile) {
 }
 
 test('4 jogadores entram na mesma sala e terminam uma partida', { skip: SEM_WS }, async (t) => {
-  const server = await startServer();
-  t.after(() => server.kill('SIGKILL'));
+  await boot(t);
 
   const clients = ['Ana', 'Bruno', 'Carla', 'Davi'].map((n) => new Client(n));
   await Promise.all(clients.map((c) => c.ready));
@@ -174,8 +184,7 @@ test('4 jogadores entram na mesma sala e terminam uma partida', { skip: SEM_WS }
 });
 
 test('sala inexistente devolve erro', { skip: SEM_WS }, async (t) => {
-  const server = await startServer();
-  t.after(() => server.kill('SIGKILL'));
+  await boot(t);
 
   const c = new Client('Zeca');
   await c.ready;
@@ -187,8 +196,7 @@ test('sala inexistente devolve erro', { skip: SEM_WS }, async (t) => {
 });
 
 test('2 jogadores compram do monte quando não têm jogada', { skip: SEM_WS }, async (t) => {
-  const server = await startServer();
-  t.after(() => server.kill('SIGKILL'));
+  await boot(t);
 
   const clients = [new Client('Um'), new Client('Dois')];
   await Promise.all(clients.map((c) => c.ready));

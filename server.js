@@ -323,3 +323,13 @@ server.listen(PORT, HOST, () => {
   console.log(`Dominó rodando em http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
   console.log(`Acesse pelo IP da máquina na rede local, ex.: http://192.168.0.10:${PORT}`);
 });
+
+// Encerramento limpo: em container, o processo é PID 1 e sinais como SIGTERM só
+// são tratados se houver handler explícito (senão o kernel os ignora).
+function shutdown(signal) {
+  console.log(`Recebido ${signal}, encerrando...`);
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 3000).unref();
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

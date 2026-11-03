@@ -5,7 +5,8 @@ sem nenhuma dependência externa (nem `npm install` é necessário) e serve tant
 interface quanto o WebSocket usado para sincronizar as jogadas.
 
 ```
-node server.js          # http://localhost:3000
+node server.js                    # http://localhost:3000 (sem dependências)
+docker compose up -d --build      # ou em container, com auto restart
 ```
 
 Cada jogador abre a página no navegador, um cria a sala e passa o código de 4
@@ -71,10 +72,76 @@ acumulado entre rodadas).
 
 ---
 
-## Passo a passo para hospedar em uma máquina Linux
+## Hospedagem com Docker (recomendado, com auto restart)
 
-Os comandos abaixo assumem Ubuntu/Debian. Em outras distribuições muda só o
-gerenciador de pacotes.
+A imagem já embute o Node, o processo roda sem privilégios (`USER node`) e o
+Docker reinicia o jogo sozinho se o processo cair. Tudo na porta **3000**.
+
+### 1. Instalar o Docker (se ainda não tiver)
+
+```bash
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker "$USER"   # depois saia e entre de novo na sessão
+docker --version && docker compose version
+```
+
+### 2. Subir o jogo
+
+```bash
+cd ~/domino_web
+docker compose up -d --build
+```
+
+### 3. Conferir
+
+```bash
+docker compose ps                 # deve mostrar "Up ... (healthy)"
+curl http://localhost:3000/health # {"ok":true,"rooms":0,...}
+docker compose logs -f            # acompanhar o log
+```
+
+Acesse de qualquer máquina da rede em `http://<ip-do-servidor>:3000`.
+
+### 4. Comandos do dia a dia
+
+```bash
+docker compose restart          # reiniciar
+docker compose down             # parar e remover o container
+docker compose up -d --build    # aplicar mudanças no código (rebuild)
+docker compose logs --tail=50   # últimas linhas do log
+```
+
+### 5. Auto restart
+
+O `docker-compose.yml` usa `restart: unless-stopped`: se o processo morrer
+(crash, OOM, reboot do host) o Docker sobe o container de novo. O `healthcheck`
+consulta `/health` a cada 30s e o status aparece no `docker compose ps`.
+
+O `docker stop` também é limpo: o servidor trata `SIGTERM` e encerra em ~1s, sem
+esperar o timeout do Docker.
+
+### 6. Mudar a porta (opcional)
+
+O jogo continua escutando 3000 dentro do container; só a porta publicada muda:
+
+```yaml
+    ports:
+      - "8080:3000"
+```
+
+### 7. Sem docker compose
+
+```bash
+docker build -t domino-web .
+docker run -d --name domino --restart unless-stopped -p 3000:3000 domino-web
+```
+
+---
+
+## Hospedagem sem Docker (Node direto + systemd)
+
+Se preferir rodar o Node direto na máquina, os passos abaixo assumem
+Ubuntu/Debian. Em outras distribuições muda só o gerenciador de pacotes.
 
 ### 1. Instalar o Node.js (versão 18 ou superior)
 
@@ -235,8 +302,10 @@ domino_web/
 │   └── app.js             # cliente: WebSocket + renderização
 ├── test/
 │   ├── game.test.js       # testes das regras
-│   └── e2e.test.js        # partida completa com 4 clientes WebSocket reais
-├── deploy/domino.service  # unit do systemd para deixar rodando
+│   └── e2e.test.js        # partida completa com clientes WebSocket reais
+├── deploy/domino.service  # unit do systemd (hospedagem sem Docker)
+├── Dockerfile             # imagem Node 22 alpine, roda como usuário comum
+├── docker-compose.yml     # porta 3000 + restart unless-stopped + healthcheck
 └── package.json
 ```
 
@@ -250,6 +319,9 @@ cada jogador esconde as mãos dos adversários.
 node --test                    # regras + partida ponta a ponta
 node --test test/game.test.js  # só as regras
 node --test test/e2e.test.js   # só a partida completa
+
+# testar o servidor que já está no ar (container ou não), sem subir outro processo:
+DOMINO_URL=http://127.0.0.1:3000 node --test test/e2e.test.js
 ```
 
 Os testes de regra rodam em qualquer Node 18+. O teste ponta a ponta usa o cliente
