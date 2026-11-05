@@ -68,6 +68,10 @@ const state = {
   handFlipped: loadPref('flip', false), // mostra o verso das peças
   soundOn: loadPref('sound', true),
   order: [],             // ordem manual das peças na mão (chaves "a-b")
+  top: {},               // chave "a-b" -> número exibido em cima (agrupamento)
+  manualOrder: false,    // o jogador arrastou peças: não reagrupa sozinho
+  gameStartedAt: null,   // detecta partida nova para reagrupar a mão
+  spectator: false,
   lastEventSeq: 0,       // último evento sonoro já tratado
   wasMyTurn: false,      // para o som de "sua vez"
 };
@@ -110,6 +114,7 @@ const sfx = {
   geral: () => beep([[520, 0.1], [660, 0.1], [784, 0.18]]),
   win: () => beep([[523, 0.12], [659, 0.12], [784, 0.12], [1047, 0.22]]),
   lose: () => beep([[392, 0.14], [330, 0.14], [262, 0.24]]),
+  chat: () => beep([[988, 0.06, 0.07], [1319, 0.1, 0.07]]),
 };
 // Destrava o áudio no primeiro toque/clique (política dos navegadores).
 function unlockAudio() { audio(); window.removeEventListener('pointerdown', unlockAudio); }
@@ -156,17 +161,21 @@ function handle(msg) {
     case 'joined':
       state.joined = true;
       state.myId = msg.playerId;
+      state.spectator = Boolean(msg.spectator);
       showTable();
+      if (state.spectator) toast('Você entrou como espectador. Entra na mesa na próxima partida, se houver lugar.');
       break;
     case 'state':
       state.room = msg.room;
       state.game = msg.game;
+      state.spectator = Boolean(msg.spectator);
       state.drawing = false;   // resposta chegou: libera a próxima compra
       render();
       processEvents();
       break;
     case 'chat':
       addChat(msg.from, msg.text);
+      if (msg.fromId !== state.myId) sfx.chat();
       break;
     case 'error':
       state.drawing = false;
@@ -352,6 +361,13 @@ function renderPlayers() {
     `;
     ui.players.appendChild(el);
   });
+  const specs = state.room.spectators || [];
+  if (specs.length) {
+    const el = document.createElement('div');
+    el.className = 'spectators';
+    el.innerHTML = `👀 Assistindo: ${specs.map((s) => escapeHtml(s.name) + (s.id === state.myId ? ' (você)' : '')).join(', ')}`;
+    ui.players.appendChild(el);
+  }
 }
 
 function pipPositions(n) {
@@ -512,8 +528,40 @@ function legalSides(g, tile) {
   return [...sides];
 }
 
+// Agrupa a mão pelo número mais repetido: com 4 peças de quina, as quatro
+// ficam juntas à esquerda, todas com o 5 em cima. Repete com o que sobrar.
+function groupHand(hand) {
+  let rest = hand.slice();
+  const order = [];
+  const top = {};
+  while (rest.length) {
+    const count = Array(7).fill(0);
+    for (const [a, b] of rest) { count[a]++; if (b !== a) count[b]++; }
+    // Mais frequente; empate -> número maior.
+    let n = 0;
+    for (let i = 1; i <= 6; i++) if (count[i] >= count[n]) n = i;
+    const group = rest.filter((t) => t[0] === n || t[1] === n);
+    rest = rest.filter((t) => t[0] !== n && t[1] !== n);
+    const other = (t) => (t[0] === n ? t[1] : t[0]);
+    // Carroça primeiro, depois do maior para o menor.
+    group.sort((x, y) => (other(y) === n) - (other(x) === n) || other(y) - other(x));
+    for (const t of group) {
+      const key = `${t[0]}-${t[1]}`;
+      order.push(key);
+      top[key] = n;
+    }
+  }
+  return { order, top };
+}
+
 // Devolve a mão na ordem manual escolhida pelo jogador; peças novas vão ao fim.
+// Sem arrasto manual, a mão fica sempre agrupada (inclusive após comprar).
 function orderedHand(myHand) {
+  if (!state.manualOrder) {
+    const { order, top } = groupHand(myHand);
+    state.order = order;
+    state.top = top;
+  }
   const byKey = new Map(myHand.map((t) => [`${t[0]}-${t[1]}`, t]));
   const result = [];
   for (const key of state.order) {
@@ -529,6 +577,10 @@ function renderHand() {
   ui.hand.innerHTML = '';
   ui.hand.classList.toggle('hidden-hand', state.handHidden);
   const myHand = g && g.players[g.you] ? g.players[g.you].hand : null;
+  if (state.spectator) {
+    ui.hand.innerHTML = '<span style="color:var(--ink-dim);font-size:14px">👀 Você está assistindo. Entra na mesa na próxima partida, se houver lugar.</span>';
+    return;
+  }
   if (!myHand) {
     ui.hand.innerHTML = '<span style="color:var(--ink-dim);font-size:14px">Sua mão aparece aqui quando a partida começar.</span>';
     return;
@@ -553,11 +605,18 @@ function renderHand() {
       : 'Arraste para reordenar';
   }
 
+  // Partida nova: volta ao agrupamento automático.
+  if (g.startedAt !== state.gameStartedAt) {
+    state.gameStartedAt = g.startedAt;
+    state.manualOrder = false;
+  }
   const tiles = orderedHand(myHand);
   for (const t of tiles) {
     const key = `${t[0]}-${t[1]}`;
     const playable = myTurn && !state.handFlipped && legalSides(g, t).length > 0;
-    const el = tileEl(t[0], t[1], {
+    // Exibe com o número do grupo em cima (só visual; a peça enviada é a mesma).
+    const [ta, tb] = state.top[key] === t[1] ? [t[1], t[0]] : [t[0], t[1]];
+    const el = tileEl(ta, tb, {
       extraClass: (state.handFlipped ? 'back' : (playable ? '' : 'illegal'))
         + (state.selected && state.selected[0] === t[0] && state.selected[1] === t[1] ? ' selected' : '')
         + (!state.handFlipped && key === drawnKey ? ' just-drawn' : ''),
@@ -567,6 +626,28 @@ function renderHand() {
     enableDragReorder(el, key);
     ui.hand.appendChild(el);
   }
+  fitHand();
+}
+
+// Ajusta o tamanho das peças da mão para caberem numa única fileira (como nos
+// apps de dominó): encolhe até um mínimo e, se ainda faltar espaço, sobrepõe.
+function fitHand() {
+  const n = ui.hand.querySelectorAll('.tile').length;
+  if (!n) return;
+  const avail = ui.hand.clientWidth;
+  if (!avail) return;
+  const max = window.innerWidth <= 560 ? 40 : 46;
+  const min = 24;
+  const gap = n > 1 ? Math.min(8, Math.max(3, Math.floor(avail / n / 10))) : 0;
+  let w = Math.floor((avail - gap * (n - 1)) / n);
+  let overlap = 0;
+  if (w < min) {
+    w = min;
+    overlap = Math.ceil((n * w - avail) / (n - 1));
+  }
+  w = Math.min(max, w);
+  ui.hand.style.setProperty('--hw', w + 'px');
+  ui.hand.style.setProperty('--hgap', (overlap ? -overlap : gap) + 'px');
 }
 
 // Reordenação por arrasto (pointer) — funciona no desktop e no toque.
@@ -606,7 +687,7 @@ function enableDragReorder(el, key) {
           const r = c.getBoundingClientRect();
           return ev.clientX >= r.left && ev.clientX <= r.right;
         });
-        if (over && over.dataset.key) reorderHand(key, over.dataset.key);
+        if (over && over.dataset.key) { state.manualOrder = true; reorderHand(key, over.dataset.key); }
         el.classList.remove('dragging');
         ui.hand.querySelectorAll('.drop-target').forEach((c) => c.classList.remove('drop-target'));
         renderHand();
@@ -662,7 +743,7 @@ function renderStatus() {
   ui.actions.innerHTML = '';
 
   if (!g) {
-    ui.turnInfo.textContent = 'Sala aberta';
+    ui.turnInfo.textContent = state.spectator ? '👀 Assistindo · mesa cheia' : 'Sala aberta';
     const isHost = state.room.hostId === state.myId;
     if (isHost) {
       const btn = document.createElement('button');
@@ -680,7 +761,28 @@ function renderStatus() {
   const me = g.players[g.you];
   if (g.status === 'finished') {
     ui.turnInfo.innerHTML = '<strong>Partida encerrada</strong>';
+    // Alternativa ao overlay (caso tenha sido fechado): reiniciar pelo rodapé.
+    const result = document.createElement('button');
+    result.className = 'ghost small';
+    result.textContent = 'Ver resultado';
+    result.addEventListener('click', () => { state.overlayShown = false; showOverlay(g); });
+    if (state.room.hostId === state.myId) {
+      const btn = document.createElement('button');
+      btn.className = 'primary';
+      btn.textContent = 'Nova partida';
+      btn.addEventListener('click', restartGame);
+      ui.actions.appendChild(btn);
+    } else {
+      ui.actions.innerHTML = '<span style="color:var(--ink-dim);font-size:13px;align-self:center">Aguardando o anfitrião iniciar nova partida…</span>';
+    }
+    ui.actions.appendChild(result);
     showOverlay(g);
+    return;
+  }
+
+  if (state.spectator) {
+    const name = g.players[g.turn]?.id ?? '...';
+    ui.turnInfo.innerHTML = `👀 Assistindo · vez de <strong>${escapeHtml(name)}</strong>`;
     return;
   }
 
@@ -762,11 +864,12 @@ function showOverlay(g) {
   ui.btnRestart.classList.toggle('hidden', !isHost);
 }
 
-$('#btn-restart').addEventListener('click', () => {
+function restartGame() {
   ui.overlay.classList.add('hidden');
   state.overlayShown = false;
   send({ type: 'start' });
-});
+}
+$('#btn-restart').addEventListener('click', restartGame);
 
 $('#btn-close-overlay').addEventListener('click', () => {
   ui.overlay.classList.add('hidden');
@@ -927,6 +1030,7 @@ function toast(msg) {
 // de tela dividida e girar o celular).
 let resizeTimer = null;
 function relayoutBoard() {
+  fitHand();
   if (state.game && state.game.board && state.game.board.length) renderBoard();
 }
 window.addEventListener('resize', () => {

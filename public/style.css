@@ -239,7 +239,7 @@ label { display: block; font-size: 12px; letter-spacing: .04em; text-transform: 
   position: relative;
 }
 .tile .half + .half { border-top: 1px solid var(--tile-edge); }
-.tile .pip { width: 6px; height: 6px; border-radius: 50%; background: var(--pip); place-self: center; }
+.tile .pip { width: clamp(3px, calc(var(--w) * .14), 7px); height: clamp(3px, calc(var(--w) * .14), 7px); border-radius: 50%; background: var(--pip); place-self: center; }
 
 /* Posições clássicas dos pontos (grade 3x3) */
 .p1 { grid-area: 2 / 2; }
@@ -264,7 +264,11 @@ label { display: block; font-size: 12px; letter-spacing: .04em; text-transform: 
 .hand-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .hand-tools .ghost.small.active { border-color: var(--accent); color: var(--accent); background: rgba(242, 178, 62, .1); }
 .hand-hint { font-size: 11px; color: var(--ink-dim); margin-left: auto; }
-.hand { display: flex; gap: 8px; flex-wrap: wrap; min-height: 88px; }
+.hand { display: flex; gap: var(--hgap, 8px); flex-wrap: nowrap; justify-content: center; align-items: flex-end; min-height: 88px; padding-top: 10px; }
+.hand .tile { --w: var(--hw, 44px); flex: 0 0 auto; position: relative; }
+.hand .tile:hover, .hand .tile.selected { z-index: 2; }
+.hand .tile .half { padding: clamp(1px, calc(var(--w) * .07), 3px); }
+.spectators { font-size: 12px; color: var(--ink-dim); padding: 4px 6px; }
 .hand.hidden-hand { min-height: 0; }
 .hand .tile { cursor: grab; transition: transform .12s ease, box-shadow .12s ease; touch-action: none; }
 .hand .tile:hover { transform: translateY(-6px); }
@@ -481,7 +485,6 @@ label { display: block; font-size: 12px; letter-spacing: .04em; text-transform: 
 
 /* Telas bem estreitas (celular em pé / meia tela): empilha e reduz a mão. */
 @media (max-width: 560px) {
-  .hand .tile { --w: 34px; }
   .brand { display: none; }
   .hand-hint { display: none; }
 }

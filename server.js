@@ -47,6 +47,7 @@ function publicRoom(room) {
     hostId: room.hostId,
     status: room.game ? room.game.status : 'lobby',
     players: room.players.map((p) => ({ id: p.id, name: p.name, connected: p.connected })),
+    spectators: room.spectators.map((p) => ({ id: p.id, name: p.name })),
     maxPlayers: MAX_PLAYERS,
     minPlayers: MIN_PLAYERS,
     // Placar de vitórias por nome, acumulado durante a vida da sala.
@@ -75,6 +76,29 @@ function broadcast(room) {
     if (!p.connected || !p.client) continue;
     p.client.send({ type: 'state', room: publicRoom(room), game: room.game ? viewFor(room.game, p.seat) : null });
   }
+  // Espectadores veem a mesa, mas nenhuma mão.
+  for (const s of room.spectators) {
+    if (!s.client) continue;
+    s.client.send({ type: 'state', room: publicRoom(room), game: room.game ? viewFor(room.game, -1) : null, spectator: true });
+  }
+}
+
+function everyone(room) {
+  return [...room.players, ...room.spectators];
+}
+
+// Fora de partida, espectadores ocupam os assentos livres (ordem de chegada).
+function seatSpectators(room) {
+  if (room.game && room.game.status === 'playing') return;
+  while (room.spectators.length > 0) {
+    const seat = nextSeat(room);
+    if (seat === -1) break;
+    const p = room.spectators.shift();
+    p.spectator = false;
+    p.seat = seat;
+    room.players.push(p);
+    for (const o of everyone(room)) sendTo(o, { type: 'chat', from: 'Sistema', text: `${p.name} sentou à mesa.`, at: Date.now() });
+  }
 }
 
 function sendTo(player, msg) {
@@ -97,6 +121,7 @@ function nextSeat(room) {
 }
 
 function startGame(room) {
+  seatSpectators(room);
   if (room.players.length < MIN_PLAYERS) {
     throw new Error(`São necessários ao menos ${MIN_PLAYERS} jogadores.`);
   }
@@ -121,12 +146,16 @@ function startGame(room) {
 function handleMessage(player, raw) {
   const room = player.room;
   let msg;
+  const GAME_ACTIONS = ['start', 'play', 'draw', 'drawAll', 'pass'];
   try {
     msg = JSON.parse(raw);
   } catch {
     return errorTo(player, 'Mensagem inválida.');
   }
   if (!msg || typeof msg.type !== 'string') return errorTo(player, 'Mensagem inválida.');
+  if (player.spectator && GAME_ACTIONS.includes(msg.type)) {
+    return errorTo(player, 'Você está assistindo: aguarde a próxima partida para jogar.');
+  }
 
   switch (msg.type) {
     case 'ping':
@@ -200,8 +229,8 @@ function handleMessage(player, raw) {
     case 'chat': {
       const text = String(msg.text ?? '').slice(0, 200).trim();
       if (!text) return;
-      const out = { type: 'chat', from: player.name, text, at: Date.now() };
-      for (const p of room.players) if (p.connected) sendTo(p, out);
+      const out = { type: 'chat', from: player.name, fromId: player.id, text, at: Date.now() };
+      for (const p of everyone(room)) sendTo(p, out);
       return;
     }
 
@@ -218,11 +247,18 @@ function handleMessage(player, raw) {
 function leaveRoom(player) {
   const room = player.room;
   if (!room) return;
+  if (player.spectator) {
+    room.spectators = room.spectators.filter((p) => p !== player);
+    player.room = null;
+    if (room.players.length === 0 && room.spectators.length === 0) rooms.delete(room.code);
+    else broadcast(room);
+    return;
+  }
   const wasPlaying = room.game && room.game.status === 'playing';
   room.players = room.players.filter((p) => p !== player);
   player.room = null;
 
-  if (room.players.length === 0) {
+  if (room.players.length === 0 && room.spectators.length === 0) {
     rooms.delete(room.code);
     return;
   }
@@ -234,13 +270,14 @@ function leaveRoom(player) {
       if (p.connected) sendTo(p, { type: 'chat', from: 'Sistema', text: `${player.name} saiu da mesa. A partida foi encerrada.`, at: Date.now() });
     }
   }
+  // Reindexa assentos para manter os índices consistentes.
+  room.players.sort((a, b) => a.seat - b.seat);
+  room.players.forEach((p, i) => { p.seat = i; });
+  seatSpectators(room);
   if (room.hostId === player.id) {
     const nextHost = room.players.find((p) => p.connected) || room.players[0];
     room.hostId = nextHost.id;
   }
-  // Reindexa assentos para manter os índices consistentes.
-  room.players.sort((a, b) => a.seat - b.seat);
-  room.players.forEach((p, i) => { p.seat = i; });
   broadcast(room);
 }
 
@@ -257,35 +294,31 @@ function joinRoom(client, msg) {
     }
   } else {
     const code = makeRoomCode();
-    room = { code, hostId: null, players: [], game: null, scores: {}, lastWinnerName: null, createdAt: Date.now() };
+    room = { code, hostId: null, players: [], spectators: [], game: null, scores: {}, lastWinnerName: null, createdAt: Date.now() };
     rooms.set(code, room);
   }
 
+  // Mesa cheia ou partida em andamento: entra como espectador.
   const seat = nextSeat(room);
-  if (seat === -1) {
-    client.send({ type: 'error', message: 'A mesa está cheia (4 jogadores).' });
-    return;
-  }
-  if (room.game && room.game.status === 'playing') {
-    client.send({ type: 'error', message: 'A partida já está em andamento nessa sala.' });
-    return;
-  }
+  const spectator = seat === -1 || Boolean(room.game && room.game.status === 'playing');
 
   const chave = newKey();
   const player = {
     id: chave.slice(0, 8),
     token: chave,
     name,
-    seat,
+    seat: spectator ? -1 : seat,
+    spectator,
     connected: true,
     client,
     room,
   };
-  room.players.push(player);
+  if (spectator) room.spectators.push(player);
+  else room.players.push(player);
   if (!room.hostId) room.hostId = player.id;
   client.player = player;
 
-  client.send({ type: 'joined', code: room.code, token: chave, playerId: player.id, name });
+  client.send({ type: 'joined', code: room.code, token: chave, playerId: player.id, name, spectator });
   broadcast(room);
 }
 
